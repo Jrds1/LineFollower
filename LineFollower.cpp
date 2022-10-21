@@ -3,9 +3,9 @@
 
 MicroBit uBit;
 
-int speed = 10, dist;
-bool moveFlag = false,leftGS, rightGS;
-unsigned long Time = 0, lastTime = 0;
+int dist = 11;
+bool moveFlag = false, leftGS = false, rightGS = false, inter=false, turn=false;
+unsigned long Time = 0, lastTime = 0, edgeTimer;
 uint8_t buf[3];
 
 /*
@@ -14,7 +14,6 @@ Button A and Button Bhandler
 void onButtonA(MicroBitEvent e){
     //if a button pushed close program
     if (e.value == MICROBIT_BUTTON_EVT_CLICK){
-        release_fiber();
         exit(0);  
     } 
 }
@@ -31,7 +30,7 @@ Motor driving functions
 void forward(){
     buf[0] = 0x00;  //motor id
     buf[1] = 0x00;  // 0 forward,  1 backward
-    buf[2] = 0x15;  //speed
+    buf[2] = 0x20;  //speed
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
     buf[0] = 0x02;  //motor id
     uBit.i2c.write( 0x20, buf, 3); 
@@ -39,7 +38,7 @@ void forward(){
 void backward(){
     buf[0] = 0x00;  //motor id
     buf[1] = 0x01;  // 0 forward,  1 backward
-    buf[2] = 0x15;  //speed
+    buf[2] = 0x20;  //speed
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
     buf[0] = 0x02;  //motor id
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
@@ -47,20 +46,22 @@ void backward(){
 void left(){
     buf[0] = 0x00;  //motor id
     buf[1] = 0x00;  // 0 forward,  1 backward
-    buf[2] = 0x15;  //speed
+    buf[2] = 0x20;  //speed
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
     buf[0] = 0x02;  //motor id
-    buf[2] = 0x00;  //speed
+    buf[1] = 0x01;  // 0 forward,  1 backward
+    buf[2] = 0x20;  //speed
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
 
 }
 void right(){
     buf[0] = 0x02;  //motor id
-    buf[1] = 0x00;  // 0 forward,  1 backward
-    buf[2] = 0x15;  //speed
+    buf[1] = 0x00;  // 0 forward,  1 backwaedgerd
+    buf[2] = 0x20;  //speed
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
     buf[0] = 0x00;  //motor id
-    buf[2] = 0x00;  //speed
+    buf[1] = 0x01;  // 0 forward,  1 backward
+    buf[2] = 0x20;  //speed
     uBit.i2c.write( 0x20, buf, 3);    // device address is 0x10 but must be left shifted for Micro:bit libraries.
 }
 void stop(){
@@ -95,6 +96,29 @@ void readGS(){
 }
 
 /*
+Check for intersection or corner
+*/
+void checkInter(){
+    edgeTimer = system_timer_current_time_us();
+    while(uBit.io.P13.getDigitalValue() == true && uBit.io.P14.getDigitalValue() == true){
+        forward();
+        if(system_timer_current_time_us() - edgeTimer > 500000)
+            break;
+
+    }
+    stop();
+    if(system_timer_current_time_us() - edgeTimer < 500000){
+        inter = true;
+    }
+    else {
+        inter = false;
+    }
+
+    while(uBit.io.P13.getDigitalValue() != true && uBit.io.P14.getDigitalValue() != true){
+        backward();
+    }
+}
+/*
 Read US sensor
 */
 void readUS(){
@@ -111,7 +135,7 @@ void readUS(){
 
     //change to cm
     dist = pulse / 59;
-    uBit.display.scroll(dist);
+    //uBit.display.scroll(dist);
 }
 
 /*
@@ -129,9 +153,9 @@ int main(){
         unsigned long Time = system_timer_current_time_us();
         
         //Read sensors
-        if(Time-lastTime >100){
-            readUS();
-        }
+        //if(Time-lastTime >100){
+            //readUS();
+        //}
         if(Time-lastTime >10){
             readGS();
         }
@@ -140,7 +164,8 @@ int main(){
         if(dist < 10){
             stop();
         }
-        else if (leftGS == true && rightGS == true){
+    
+        if (leftGS == true && rightGS == true){
             forward();
         }
         else if (leftGS == true && rightGS == false){
@@ -150,12 +175,27 @@ int main(){
             left();
         }
         else if (leftGS == false && rightGS == false){
-            backward();
+            forward();
+            turn = !turn;
+            edgeTimer = system_timer_current_time_us();
+            if(turn == true)
+                while(uBit.io.P13.getDigitalValue() == true || uBit.io.P14.getDigitalValue() == true){
+                    right();
+                    if(system_timer_current_time_us() - edgeTimer > 750000)
+                        break;
+                
+                }
+            else if (turn == false)
+                while(uBit.io.P13.getDigitalValue() == true || uBit.io.P14.getDigitalValue() == true){
+                    left();
+                    //if(system_timer_current_time_us() - edgeTimer > 500000)
+                        //break;
+                }
+            forward();
         }
-        else{
-            stop();
-        }
+        
         uBit.sleep(100);
         lastTime = Time;
-    }   
-}
+    } 
+}  
+
